@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, time::Instant};
 
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Pair {
     pub x0: f32,
