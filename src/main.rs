@@ -1,6 +1,6 @@
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use std::{fs, time::Instant};
+use std::{fs, str, time::Instant};
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Pair {
@@ -30,11 +30,84 @@ fn haversine_of_degrees(p: &Pair) -> f32 {
     2.0 * EARTH_RADIUS_KM * 2.0 * f32::asin(f32::sqrt(root_term))
 }
 
+fn next_colon(input: &[u8], index: &mut usize) {
+    while input[*index] != b':' {
+        *index += 1;
+    }
+}
+
+fn next_comma(input: &[u8], index: &mut usize) {
+    while input[*index] != b',' {
+        *index += 1;
+    }
+}
+
+fn next_end_curly(input: &[u8], index: &mut usize) {
+    while input[*index] != b'}' {
+        *index += 1;
+    }
+}
+
+fn parse(input: &str) -> Pairs {
+    let mut res = Pairs { pairs: Vec::new() };
+    res.pairs.reserve(10_000_000);
+
+    let input = input
+        .trim_start_matches("{\"pairs\":[")
+        .trim_end_matches("]}")
+        .as_bytes();
+
+    let mut index = 0;
+
+    while index + 16 < input.len() {
+        next_colon(input, &mut index);
+        let colon = index;
+        next_comma(input, &mut index);
+        let comma = index;
+        let part = &input[colon + 1..comma];
+        let x0 = fast_float::parse(part)
+            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
+            .unwrap();
+
+        next_colon(input, &mut index);
+        let colon = index;
+        next_comma(input, &mut index);
+        let comma = index;
+        let part = &input[colon + 1..comma];
+        let y0 = fast_float::parse(part)
+            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
+            .unwrap();
+
+        next_colon(input, &mut index);
+        let colon = index;
+        next_comma(input, &mut index);
+        let comma = index;
+        let part = &input[colon + 1..comma];
+        let x1 = fast_float::parse(part)
+            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
+            .unwrap();
+
+        next_colon(input, &mut index);
+        let colon = index;
+        next_end_curly(input, &mut index);
+        let comma = index;
+        let part = &input[colon + 1..comma];
+        let y1 = fast_float::parse(part)
+            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
+            .unwrap();
+
+        res.pairs.push(Pair { x0, y0, x1, y1 });
+    }
+
+    res
+}
+
 fn main() {
-    let mut input = fs::read_to_string("input.json").unwrap();
+    let input = fs::read_to_string("input.json").unwrap();
 
     let start_time = Instant::now();
-    let parsed_input = serde_json::from_str::<Pairs>(input.as_mut_str()).unwrap();
+    //let parsed_input = serde_json::from_str::<Pairs>(input.as_mut_str()).unwrap();
+    let parsed_input = parse(&input);
     let mid_time = Instant::now();
 
     let sum = parsed_input
