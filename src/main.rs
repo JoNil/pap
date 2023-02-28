@@ -31,19 +31,19 @@ fn haversine_of_degrees(p: &Pair) -> f32 {
 }
 
 fn next_colon(input: &[u8], index: &mut usize) {
-    while input[*index] != b':' {
+    while unsafe { *input.get_unchecked(*index) } != b':' {
         *index += 1;
     }
 }
 
 fn next_comma(input: &[u8], index: &mut usize) {
-    while input[*index] != b',' {
+    while unsafe { *input.get_unchecked(*index) } != b',' {
         *index += 1;
     }
 }
 
 fn next_end_curly(input: &[u8], index: &mut usize) {
-    while input[*index] != b'}' {
+    while unsafe { *input.get_unchecked(*index) } != b'}' {
         *index += 1;
     }
 }
@@ -65,36 +65,28 @@ fn parse(input: &str) -> Pairs {
         next_comma(input, &mut index);
         let comma = index;
         let part = &input[colon + 1..comma];
-        let x0 = fast_float::parse(part)
-            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
-            .unwrap();
+        let x0 = fast_float::parse(part).unwrap();
 
         next_colon(input, &mut index);
         let colon = index;
         next_comma(input, &mut index);
         let comma = index;
         let part = &input[colon + 1..comma];
-        let y0 = fast_float::parse(part)
-            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
-            .unwrap();
+        let y0 = fast_float::parse(part).unwrap();
 
         next_colon(input, &mut index);
         let colon = index;
         next_comma(input, &mut index);
         let comma = index;
         let part = &input[colon + 1..comma];
-        let x1 = fast_float::parse(part)
-            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
-            .unwrap();
+        let x1 = fast_float::parse(part).unwrap();
 
         next_colon(input, &mut index);
         let colon = index;
         next_end_curly(input, &mut index);
         let comma = index;
         let part = &input[colon + 1..comma];
-        let y1 = fast_float::parse(part)
-            .map_err(|e| panic!("{e}, input: '{}'", str::from_utf8(part).unwrap()))
-            .unwrap();
+        let y1 = fast_float::parse(part).unwrap();
 
         res.pairs.push(Pair { x0, y0, x1, y1 });
     }
@@ -106,7 +98,7 @@ fn main() {
     let input = fs::read_to_string("input.json").unwrap();
 
     let start_time = Instant::now();
-    //let parsed_input = serde_json::from_str::<Pairs>(input.as_mut_str()).unwrap();
+    //let parsed_input = serde_json::from_str::<Pairs>(input.as_str()).unwrap();
     let parsed_input = parse(&input);
     let mid_time = Instant::now();
 
