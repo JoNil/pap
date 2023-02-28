@@ -30,10 +30,10 @@ fn haversine_of_degrees(p: &Pair) -> f32 {
 }
 
 fn main() {
-    let input = fs::read_to_string("input.json").unwrap();
+    let mut input = fs::read_to_string("input.json").unwrap();
 
     let start_time = Instant::now();
-    let parsed_input = serde_json::from_str::<Pairs>(&input).unwrap();
+    let parsed_input = serde_json::from_str::<Pairs>(input.as_mut_str()).unwrap();
     let mid_time = Instant::now();
 
     let mut sum = 0.0;
