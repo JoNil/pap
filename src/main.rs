@@ -1,6 +1,10 @@
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use std::{fs, str, time::Instant};
+use std::{
+    arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8, _mm_set1_epi8},
+    fs, str,
+    time::Instant,
+};
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Pair {
@@ -31,20 +35,56 @@ fn haversine_of_degrees(p: &Pair) -> f32 {
 }
 
 fn next_colon(input: &[u8], index: &mut usize) {
-    while unsafe { *input.get_unchecked(*index) } != b':' {
-        *index += 1;
+    unsafe {
+        let colon = _mm_set1_epi8(b':' as i8);
+
+        loop {
+            let chunk = _mm_loadu_si128(input.as_ptr().add(*index) as *const __m128i);
+            let eq = _mm_cmpeq_epi8(chunk, colon);
+            let mask = _mm_movemask_epi8(eq);
+
+            if mask != 0 {
+                *index += mask.trailing_zeros() as usize;
+                return;
+            }
+            *index += 16;
+        }
     }
 }
 
 fn next_comma(input: &[u8], index: &mut usize) {
-    while unsafe { *input.get_unchecked(*index) } != b',' {
-        *index += 1;
+    unsafe {
+        let colon = _mm_set1_epi8(b',' as i8);
+
+        loop {
+            let chunk = _mm_loadu_si128(input.as_ptr().add(*index) as *const __m128i);
+            let eq = _mm_cmpeq_epi8(chunk, colon);
+            let mask = _mm_movemask_epi8(eq);
+
+            if mask != 0 {
+                *index += mask.trailing_zeros() as usize;
+                return;
+            }
+            *index += 16;
+        }
     }
 }
 
 fn next_end_curly(input: &[u8], index: &mut usize) {
-    while unsafe { *input.get_unchecked(*index) } != b'}' {
-        *index += 1;
+    unsafe {
+        let colon = _mm_set1_epi8(b'}' as i8);
+
+        loop {
+            let chunk = _mm_loadu_si128(input.as_ptr().add(*index) as *const __m128i);
+            let eq = _mm_cmpeq_epi8(chunk, colon);
+            let mask = _mm_movemask_epi8(eq);
+
+            if mask != 0 {
+                *index += mask.trailing_zeros() as usize;
+                return;
+            }
+            *index += 16;
+        }
     }
 }
 
