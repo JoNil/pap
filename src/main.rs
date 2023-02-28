@@ -1,6 +1,6 @@
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::{fs, time::Instant};
-
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Pair {
@@ -37,17 +37,13 @@ fn main() {
     let parsed_input = serde_json::from_str::<Pairs>(input.as_mut_str()).unwrap();
     let mid_time = Instant::now();
 
-    let mut sum = 0.0;
-    let mut count = 0;
+    let sum = parsed_input
+        .pairs
+        .par_iter()
+        .map(haversine_of_degrees)
+        .sum::<f32>();
 
-    dbg!(parsed_input.pairs.len());
-
-    for p in parsed_input.pairs {
-        sum += haversine_of_degrees(&p);
-        count += 1;
-    }
-
-    let average = sum / count as f32;
+    let average = sum / parsed_input.pairs.len() as f32;
 
     let end_time = Instant::now();
 
@@ -66,6 +62,6 @@ fn main() {
     );
     println!(
         "Throughput = {} haversines/second",
-        count as f32 / (end_time - start_time).as_secs_f32()
+        parsed_input.pairs.len() as f32 / (end_time - start_time).as_secs_f32()
     );
 }
