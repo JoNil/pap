@@ -72,6 +72,8 @@ enum Opcode {
     MovRegToRegOrRegToMem,
     MovImmediateToMem,
     MovImmediateToReg,
+    MovMemToAcc,
+    MovAccToMem,
 }
 
 impl Opcode {
@@ -86,6 +88,14 @@ impl Opcode {
 
         if byte & 0b1111_0000 == 0b1011_0000 {
             return Opcode::MovImmediateToReg;
+        }
+
+        if byte & 0b1111_1110 == 0b1010_0000 {
+            return Opcode::MovMemToAcc;
+        }
+
+        if byte & 0b1111_1110 == 0b1010_0010 {
+            return Opcode::MovAccToMem;
         }
 
         panic!("Invalid opcode: {byte:b}");
@@ -130,6 +140,15 @@ enum Instruction {
     MovImmediateToReg {
         dst: Register,
         data: u16,
+    },
+
+    MovMemToAcc {
+        addr: u16,
+        wide: bool,
+    },
+    MovAccToMem {
+        addr: u16,
+        wide: bool,
     },
 }
 
@@ -233,6 +252,20 @@ impl Display for Instruction {
 
             Instruction::MovImmediateToReg { dst, data } => {
                 write!(f, "mov {}, {}", dst.as_ref().to_lowercase(), data)
+            }
+            Instruction::MovMemToAcc { addr, wide } => {
+                if *wide {
+                    write!(f, "mov ax, [{}]", addr)
+                } else {
+                    write!(f, "mov al, [{}]", addr)
+                }
+            }
+            Instruction::MovAccToMem { addr, wide } => {
+                if *wide {
+                    write!(f, "mov [{}], ax", addr)
+                } else {
+                    write!(f, "mov [{}], al", addr)
+                }
             }
         }
     }
@@ -510,6 +543,28 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                 };
 
                 Instruction::MovImmediateToReg { dst, data }
+            }
+            Opcode::MovMemToAcc => {
+                let w = instruction_byte_1 & 0b1;
+
+                let addr = {
+                    let instruction_byte_2 = input.next_byte();
+                    let instruction_byte_3 = input.next_byte();
+                    ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                };
+
+                Instruction::MovMemToAcc { addr, wide: w > 0 }
+            }
+            Opcode::MovAccToMem => {
+                let w = instruction_byte_1 & 0b1;
+
+                let addr = {
+                    let instruction_byte_2 = input.next_byte();
+                    let instruction_byte_3 = input.next_byte();
+                    ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                };
+
+                Instruction::MovAccToMem { addr, wide: w > 0 }
             }
         };
 
