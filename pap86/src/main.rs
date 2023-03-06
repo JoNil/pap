@@ -139,7 +139,11 @@ impl Display for Instruction {
                     dst.as_ref().to_lowercase(),
                     formula,
                     if let Some(displacement) = displacement {
-                        format!(" + {displacement}")
+                        if *displacement > 0 {
+                            format!(" + {displacement}")
+                        } else {
+                            "".to_string()
+                        }
                     } else {
                         "".to_string()
                     }
@@ -155,7 +159,11 @@ impl Display for Instruction {
                     "mov [{}{}], {}",
                     formula,
                     if let Some(displacement) = displacement {
-                        format!(" + {displacement}")
+                        if *displacement > 0 {
+                            format!(" + {displacement}")
+                        } else {
+                            "".to_string()
+                        }
                     } else {
                         "".to_string()
                     },
