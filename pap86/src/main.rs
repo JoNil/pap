@@ -70,6 +70,7 @@ impl Display for EffectiveAddressFormula {
 #[derive(Copy, Clone, Debug)]
 enum Opcode {
     MovRegToRegOrRegToMem,
+    MovImmediateToMem,
     MovImmediateToReg,
 }
 
@@ -77,6 +78,10 @@ impl Opcode {
     fn parse(byte: u8) -> Opcode {
         if byte & 0b1111_1100 == 0b1000_1000 {
             return Opcode::MovRegToRegOrRegToMem;
+        }
+
+        if byte & 0b1111_1110 == 0b1100_0110 {
+            return Opcode::MovImmediateToMem;
         }
 
         if byte & 0b1111_0000 == 0b1011_0000 {
@@ -89,28 +94,39 @@ impl Opcode {
 
 #[derive(Copy, Clone, Debug)]
 enum Instruction {
-    MovRegReg {
+    MovRegToReg {
         dst: Register,
         src: Register,
     },
-    MovRegMem {
+    MovMemToReg {
         dst: Register,
         formula: EffectiveAddressFormula,
         displacement: Option<u16>,
     },
-    MovMemReg {
+    MovRegToMem {
         formula: EffectiveAddressFormula,
         displacement: Option<u16>,
         src: Register,
     },
-    MovRegMemDirect {
+    MovMemDirectToReg {
         dst: Register,
         address: u16,
     },
-    MovMemDirectReg {
+    MovRegToMemDirect {
         address: u16,
         src: Register,
     },
+
+    MovImmediateToMem {
+        formula: EffectiveAddressFormula,
+        displacement: Option<u16>,
+        data: u16,
+    },
+    MovImmediateMemDirect {
+        address: u16,
+        data: u16,
+    },
+
     MovImmediateToReg {
         dst: Register,
         data: u16,
@@ -120,7 +136,7 @@ enum Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Instruction::MovRegReg { dst, src } => {
+            Instruction::MovRegToReg { dst, src } => {
                 write!(
                     f,
                     "mov {}, {}",
@@ -128,7 +144,7 @@ impl Display for Instruction {
                     src.as_ref().to_lowercase()
                 )
             }
-            Instruction::MovRegMem {
+            Instruction::MovMemToReg {
                 dst,
                 formula,
                 displacement,
@@ -149,7 +165,7 @@ impl Display for Instruction {
                     }
                 )
             }
-            Instruction::MovMemReg {
+            Instruction::MovRegToMem {
                 formula,
                 displacement,
                 src,
@@ -170,12 +186,51 @@ impl Display for Instruction {
                     src.as_ref().to_lowercase(),
                 )
             }
-            Instruction::MovRegMemDirect { dst, address } => {
+            Instruction::MovMemDirectToReg { dst, address } => {
                 write!(f, "mov {}, [{}]", dst.as_ref().to_lowercase(), address)
             }
-            Instruction::MovMemDirectReg { address, src } => {
+            Instruction::MovRegToMemDirect { address, src } => {
                 write!(f, "mov [{}], {}", address, src.as_ref().to_lowercase())
             }
+
+            Instruction::MovImmediateToMem {
+                formula,
+                displacement,
+                data,
+            } => {
+                write!(
+                    f,
+                    "mov [{}{}], {}",
+                    formula,
+                    if let Some(displacement) = displacement {
+                        if *displacement > 0 {
+                            format!(" + {displacement}")
+                        } else {
+                            "".to_string()
+                        }
+                    } else {
+                        "".to_string()
+                    },
+                    if *data > 255 {
+                        format!("word {data}")
+                    } else {
+                        format!("byte {data}")
+                    },
+                )
+            }
+            Instruction::MovImmediateMemDirect { address, data } => {
+                write!(
+                    f,
+                    "mov [{}], {}",
+                    address,
+                    if *data > 255 {
+                        format!("word {data}")
+                    } else {
+                        format!("byte {data}")
+                    }
+                )
+            }
+
             Instruction::MovImmediateToReg { dst, data } => {
                 write!(f, "mov {}, {}", dst.as_ref().to_lowercase(), data)
             }
@@ -240,12 +295,12 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             };
 
                             if d > 0 {
-                                Instruction::MovRegMemDirect {
+                                Instruction::MovMemDirectToReg {
                                     dst: reg_1,
                                     address: direct,
                                 }
                             } else {
-                                Instruction::MovMemDirectReg {
+                                Instruction::MovRegToMemDirect {
                                     address: direct,
                                     src: reg_1,
                                 }
@@ -256,13 +311,13 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             };
 
                             if d > 0 {
-                                Instruction::MovRegMem {
+                                Instruction::MovMemToReg {
                                     dst: reg_1,
                                     formula,
                                     displacement: None,
                                 }
                             } else {
-                                Instruction::MovMemReg {
+                                Instruction::MovRegToMem {
                                     formula,
                                     displacement: None,
                                     src: reg_1,
@@ -280,13 +335,13 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                         let displacement = input.next_byte() as u16;
 
                         if d > 0 {
-                            Instruction::MovRegMem {
+                            Instruction::MovMemToReg {
                                 dst: reg_1,
                                 formula,
                                 displacement: Some(displacement),
                             }
                         } else {
-                            Instruction::MovMemReg {
+                            Instruction::MovRegToMem {
                                 formula,
                                 displacement: Some(displacement),
                                 src: reg_1,
@@ -307,13 +362,13 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                         };
 
                         if d > 0 {
-                            Instruction::MovRegMem {
+                            Instruction::MovMemToReg {
                                 dst: reg_1,
                                 formula,
                                 displacement: Some(displacement),
                             }
                         } else {
-                            Instruction::MovMemReg {
+                            Instruction::MovRegToMem {
                                 formula,
                                 displacement: Some(displacement),
                                 src: reg_1,
@@ -330,7 +385,109 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                         let dst = if d == 0b1 { reg_1 } else { reg_2 };
                         let src = if d == 0b1 { reg_2 } else { reg_1 };
 
-                        Instruction::MovRegReg { dst, src }
+                        Instruction::MovRegToReg { dst, src }
+                    }
+                    _ => {
+                        panic!("Invalid mode!");
+                    }
+                }
+            }
+            Opcode::MovImmediateToMem => {
+                let w = instruction_byte_1 & 0b1;
+
+                let instruction_byte_2 = input.next_byte();
+
+                let mode = instruction_byte_2 >> 6;
+
+                let get_data = |input: &mut Input| {
+                    if w > 0 {
+                        let lo = input.next_byte();
+                        let hi = input.next_byte();
+                        ((hi as u16) << 8) | (lo as u16)
+                    } else {
+                        input.next_byte() as u16
+                    }
+                };
+
+                match mode {
+                    0b00 => {
+                        let mem = instruction_byte_2 & 0b111;
+
+                        if mem == 0b110 {
+                            let direct = {
+                                let instruction_byte_2 = input.next_byte();
+                                let instruction_byte_3 = input.next_byte();
+                                ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                            };
+
+                            let data = get_data(&mut input);
+
+                            Instruction::MovImmediateMemDirect {
+                                address: direct,
+                                data,
+                            }
+                        } else {
+                            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                                panic!("Invalid formula: {mem:b}");
+                            };
+
+                            let data = get_data(&mut input);
+
+                            Instruction::MovImmediateToMem {
+                                formula,
+                                displacement: None,
+                                data,
+                            }
+                        }
+                    }
+                    0b01 => {
+                        let mem = instruction_byte_2 & 0b111;
+
+                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                            panic!("Invalid formula: {mem:b}");
+                        };
+
+                        let displacement = input.next_byte() as u16;
+
+                        let data = get_data(&mut input);
+
+                        Instruction::MovImmediateToMem {
+                            formula,
+                            displacement: Some(displacement),
+                            data,
+                        }
+                    }
+                    0b10 => {
+                        let mem = instruction_byte_2 & 0b111;
+
+                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                            panic!("Invalid formula: {mem:b}");
+                        };
+
+                        let displacement = {
+                            let instruction_byte_2 = input.next_byte();
+                            let instruction_byte_3 = input.next_byte();
+                            ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                        };
+
+                        let data = get_data(&mut input);
+
+                        Instruction::MovImmediateToMem {
+                            formula,
+                            displacement: Some(displacement),
+                            data,
+                        }
+                    }
+                    0b11 => {
+                        let w_reg = (w << 3) | (instruction_byte_2 & 0b111);
+
+                        let Some(reg) = Register::from_repr(w_reg) else {
+                            panic!("Invalid reg: {w_reg:b}")
+                        };
+
+                        let data = get_data(&mut input);
+
+                        Instruction::MovImmediateToReg { dst: reg, data }
                     }
                     _ => {
                         panic!("Invalid mode!");
