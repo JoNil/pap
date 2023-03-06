@@ -39,15 +39,30 @@ enum Register {
     DI = 0b1111,
 }
 
-#[derive(Copy, Clone, Debug, FromRepr)]
-#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
 enum Opcode {
-    Mov = 0b100010,
+    MovRegToReg,
+    MovImmediateToReg,
+}
+
+impl Opcode {
+    fn parse(byte: u8) -> Opcode {
+        if byte & 0b1111_1100 == 0b1000_1000 {
+            return Opcode::MovRegToReg;
+        }
+
+        if byte & 0b1111_0000 == 0b1011_0000 {
+            return Opcode::MovImmediateToReg;
+        }
+
+        panic!("Invalid opcode: {byte:b}");
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
 enum Instruction {
     MovRegReg { dst: Register, src: Register },
+    MovImmediateToReg { dst: Register, data: u16 },
 }
 
 impl Display for Instruction {
@@ -61,31 +76,49 @@ impl Display for Instruction {
                     src.as_ref().to_lowercase()
                 )
             }
+            Instruction::MovImmediateToReg { dst, data } => {
+                write!(f, "mov {}, {}", dst.as_ref().to_lowercase(), data)
+            }
         }
     }
 }
 
+struct Input<'a> {
+    input: &'a [u8],
+    index: usize,
+}
+
+impl<'a> Input<'a> {
+    fn new(input: &[u8]) -> Input {
+        Input { input, index: 0 }
+    }
+
+    fn next_byte(&mut self) -> u8 {
+        let byte = self.input[self.index];
+        self.index += 1;
+        byte
+    }
+
+    fn is_empty(&self) -> bool {
+        self.index == self.input.len()
+    }
+}
+
 fn decode(input: &[u8]) -> Vec<Instruction> {
+    let mut input = Input::new(input);
     let mut res = Vec::new();
 
-    let mut index = 0;
+    while !input.is_empty() {
+        let instruction_byte_1 = input.next_byte();
 
-    while index < input.len() {
-        let instruction_byte_1 = input[index];
-        index += 1;
-
-        let opcode = instruction_byte_1 >> 2;
-        let Some(opcode) = Opcode::from_repr(opcode) else {
-            panic!("Invalid Opcode: {opcode:b}")
-        };
+        let opcode = Opcode::parse(instruction_byte_1);
 
         let instruction = match opcode {
-            Opcode::Mov => {
+            Opcode::MovRegToReg => {
                 let d = (instruction_byte_1 >> 1) & 0b1;
                 let w = instruction_byte_1 & 0b1;
 
-                let instruction_byte_2 = input[index];
-                index += 1;
+                let instruction_byte_2 = input.next_byte();
 
                 let mode = instruction_byte_2 >> 6;
 
@@ -111,6 +144,23 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                         panic!("Unsupported mode!");
                     }
                 }
+            }
+            Opcode::MovImmediateToReg => {
+                let w_reg = instruction_byte_1 & 0b1111;
+
+                let Some(dst) = Register::from_repr(w_reg) else {
+                    panic!("Invalid reg: {w_reg:b}")
+                };
+
+                let data = if w_reg & 0b1000 > 0 {
+                    let instruction_byte_2 = input.next_byte();
+                    let instruction_byte_3 = input.next_byte();
+                    ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                } else {
+                    input.next_byte() as u16
+                };
+
+                Instruction::MovImmediateToReg { dst, data }
             }
         };
 
