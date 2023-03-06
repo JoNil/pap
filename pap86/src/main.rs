@@ -189,8 +189,77 @@ impl<'a> Input<'a> {
         byte
     }
 
+    fn next_word(&mut self) -> u16 {
+        let lo = self.next_byte() as u16;
+        let hi = self.next_byte() as u16;
+        (hi << 8) | lo
+    }
+
     fn is_empty(&self) -> bool {
         self.index == self.input.len()
+    }
+}
+
+fn parse_mem(input: &mut Input, w: u8, instruction_byte_2: u8) -> Operand {
+    let mode = instruction_byte_2 >> 6;
+
+    match mode {
+        0b00 => {
+            let mem = instruction_byte_2 & 0b111;
+
+            if mem == 0b110 {
+                Operand::MemDirect(input.next_word())
+            } else {
+                let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                    panic!("Invalid formula: {mem:b}");
+                };
+
+                Operand::Mem {
+                    formula,
+                    displacement: None,
+                }
+            }
+        }
+        0b01 => {
+            let mem = instruction_byte_2 & 0b111;
+
+            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                panic!("Invalid formula: {mem:b}");
+            };
+
+            let displacement = input.next_byte() as i8 as i16;
+
+            Operand::Mem {
+                formula,
+                displacement: Some(displacement),
+            }
+        }
+        0b10 => {
+            let mem = instruction_byte_2 & 0b111;
+
+            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
+                panic!("Invalid formula: {mem:b}");
+            };
+
+            let displacement = input.next_word() as i16;
+
+            Operand::Mem {
+                formula,
+                displacement: Some(displacement),
+            }
+        }
+        0b11 => {
+            let w_reg_2 = (w << 3) | (instruction_byte_2 & 0b111);
+
+            let Some(reg_2) = Register::from_repr(w_reg_2).map(Operand::Register) else {
+                panic!("Invalid reg: {w_reg_2:b}")
+            };
+
+            reg_2
+        }
+        _ => {
+            panic!("Invalid mode!");
+        }
     }
 }
 
@@ -216,123 +285,17 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                     panic!("Invalid reg: {w_reg_1:b}")
                 };
 
-                let mode = instruction_byte_2 >> 6;
+                let mem = parse_mem(&mut input, w, instruction_byte_2);
 
-                match mode {
-                    0b00 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        if mem == 0b110 {
-                            let direct = Operand::MemDirect({
-                                let instruction_byte_2 = input.next_byte();
-                                let instruction_byte_3 = input.next_byte();
-                                ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                            });
-
-                            if d > 0 {
-                                Instruction::Mov {
-                                    dst: reg_1,
-                                    src: direct,
-                                }
-                            } else {
-                                Instruction::Mov {
-                                    dst: direct,
-                                    src: reg_1,
-                                }
-                            }
-                        } else {
-                            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                                panic!("Invalid formula: {mem:b}");
-                            };
-
-                            let mem = Operand::Mem {
-                                formula,
-                                displacement: None,
-                            };
-
-                            if d > 0 {
-                                Instruction::Mov {
-                                    dst: reg_1,
-                                    src: mem,
-                                }
-                            } else {
-                                Instruction::Mov {
-                                    dst: mem,
-                                    src: reg_1,
-                                }
-                            }
-                        }
+                if d > 0 {
+                    Instruction::Mov {
+                        dst: reg_1,
+                        src: mem,
                     }
-                    0b01 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                            panic!("Invalid formula: {mem:b}");
-                        };
-
-                        let displacement = input.next_byte() as i8 as i16;
-
-                        let mem = Operand::Mem {
-                            formula,
-                            displacement: Some(displacement),
-                        };
-
-                        if d > 0 {
-                            Instruction::Mov {
-                                dst: reg_1,
-                                src: mem,
-                            }
-                        } else {
-                            Instruction::Mov {
-                                dst: mem,
-                                src: reg_1,
-                            }
-                        }
-                    }
-                    0b10 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                            panic!("Invalid formula: {mem:b}");
-                        };
-
-                        let displacement = {
-                            let instruction_byte_2 = input.next_byte();
-                            let instruction_byte_3 = input.next_byte();
-                            ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                        } as i16;
-
-                        let mem = Operand::Mem {
-                            formula,
-                            displacement: Some(displacement),
-                        };
-
-                        if d > 0 {
-                            Instruction::Mov {
-                                dst: reg_1,
-                                src: mem,
-                            }
-                        } else {
-                            Instruction::Mov {
-                                dst: mem,
-                                src: reg_1,
-                            }
-                        }
-                    }
-                    0b11 => {
-                        let w_reg_2 = (w << 3) | (instruction_byte_2 & 0b111);
-
-                        let Some(reg_2) = Register::from_repr(w_reg_2).map(Operand::Register) else {
-                            panic!("Invalid reg: {w_reg_2:b}")
-                        };
-
-                        let dst = if d == 0b1 { reg_1 } else { reg_2 };
-                        let src = if d == 0b1 { reg_2 } else { reg_1 };
-
-                        Instruction::Mov { dst, src }
-                    }
-                    _ => {
-                        panic!("Invalid mode!");
+                } else {
+                    Instruction::Mov {
+                        dst: mem,
+                        src: reg_1,
                     }
                 }
             }
@@ -341,119 +304,20 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
 
                 let instruction_byte_2 = input.next_byte();
 
-                let mode = instruction_byte_2 >> 6;
+                let mem = parse_mem(&mut input, w, instruction_byte_2);
 
-                let get_data = |input: &mut Input| {
-                    Operand::Immediate(
-                        if w > 0 {
-                            let lo = input.next_byte();
-                            let hi = input.next_byte();
-                            ((hi as u16) << 8) | (lo as u16)
-                        } else {
-                            input.next_byte() as u16
-                        },
-                        true,
-                    )
-                };
+                let data = Operand::Immediate(
+                    if w > 0 {
+                        input.next_word()
+                    } else {
+                        input.next_byte() as u16
+                    },
+                    true,
+                );
 
-                match mode {
-                    0b00 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        if mem == 0b110 {
-                            let direct = Operand::MemDirect({
-                                let instruction_byte_2 = input.next_byte();
-                                let instruction_byte_3 = input.next_byte();
-                                ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                            });
-
-                            let data = get_data(&mut input);
-
-                            Instruction::Mov {
-                                dst: direct,
-                                src: data,
-                            }
-                        } else {
-                            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                                panic!("Invalid formula: {mem:b}");
-                            };
-
-                            let mem = Operand::Mem {
-                                formula,
-                                displacement: None,
-                            };
-
-                            let data = get_data(&mut input);
-
-                            Instruction::Mov {
-                                dst: mem,
-                                src: data,
-                            }
-                        }
-                    }
-                    0b01 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                            panic!("Invalid formula: {mem:b}");
-                        };
-
-                        let displacement = input.next_byte() as i8 as i16;
-
-                        let mem = Operand::Mem {
-                            formula,
-                            displacement: Some(displacement),
-                        };
-
-                        let data = get_data(&mut input);
-
-                        Instruction::Mov {
-                            dst: mem,
-                            src: data,
-                        }
-                    }
-                    0b10 => {
-                        let mem = instruction_byte_2 & 0b111;
-
-                        let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                            panic!("Invalid formula: {mem:b}");
-                        };
-
-                        let displacement = {
-                            let instruction_byte_2 = input.next_byte();
-                            let instruction_byte_3 = input.next_byte();
-                            ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                        } as i16;
-
-                        let mem = Operand::Mem {
-                            formula,
-                            displacement: Some(displacement),
-                        };
-
-                        let data = get_data(&mut input);
-
-                        Instruction::Mov {
-                            dst: mem,
-                            src: data,
-                        }
-                    }
-                    0b11 => {
-                        let w_reg = (w << 3) | (instruction_byte_2 & 0b111);
-
-                        let Some(reg) = Register::from_repr(w_reg).map(Operand::Register) else {
-                            panic!("Invalid reg: {w_reg:b}")
-                        };
-
-                        let data = get_data(&mut input);
-
-                        Instruction::Mov {
-                            dst: reg,
-                            src: data,
-                        }
-                    }
-                    _ => {
-                        panic!("Invalid mode!");
-                    }
+                Instruction::Mov {
+                    dst: mem,
+                    src: data,
                 }
             }
             Opcode::MovImmediateToReg => {
@@ -465,9 +329,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
 
                 let data = Operand::Immediate(
                     if w_reg & 0b1000 > 0 {
-                        let instruction_byte_2 = input.next_byte();
-                        let instruction_byte_3 = input.next_byte();
-                        ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
+                        input.next_word()
                     } else {
                         input.next_byte() as u16
                     },
@@ -479,11 +341,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
             Opcode::MovMemToAcc => {
                 let w = instruction_byte_1 & 0b1;
 
-                let addr = Operand::MemDirect({
-                    let instruction_byte_2 = input.next_byte();
-                    let instruction_byte_3 = input.next_byte();
-                    ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                });
+                let addr = Operand::MemDirect(input.next_word());
 
                 Instruction::Mov {
                     dst: Operand::Register(if w > 0 { Register::AX } else { Register::AL }),
@@ -493,11 +351,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
             Opcode::MovAccToMem => {
                 let w = instruction_byte_1 & 0b1;
 
-                let addr = Operand::MemDirect({
-                    let instruction_byte_2 = input.next_byte();
-                    let instruction_byte_3 = input.next_byte();
-                    ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                });
+                let addr = Operand::MemDirect(input.next_word());
 
                 Instruction::Mov {
                     dst: addr,
