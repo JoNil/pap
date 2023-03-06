@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::{
+    cmp::Ordering,
     fmt::Display,
     fs::{self, File},
     io::Write,
@@ -111,11 +112,11 @@ enum Instruction {
     MovMemToReg {
         dst: Register,
         formula: EffectiveAddressFormula,
-        displacement: Option<u16>,
+        displacement: Option<i16>,
     },
     MovRegToMem {
         formula: EffectiveAddressFormula,
-        displacement: Option<u16>,
+        displacement: Option<i16>,
         src: Register,
     },
     MovMemDirectToReg {
@@ -129,7 +130,7 @@ enum Instruction {
 
     MovImmediateToMem {
         formula: EffectiveAddressFormula,
-        displacement: Option<u16>,
+        displacement: Option<i16>,
         data: u16,
     },
     MovImmediateMemDirect {
@@ -150,6 +151,18 @@ enum Instruction {
         addr: u16,
         wide: bool,
     },
+}
+
+fn displacement_str(displacement: &Option<i16>) -> String {
+    if let Some(displacement) = displacement {
+        match displacement.cmp(&0) {
+            Ordering::Greater => format!(" + {displacement}"),
+            Ordering::Less => format!(" - {}", displacement.abs()),
+            Ordering::Equal => "".to_string(),
+        }
+    } else {
+        "".to_string()
+    }
 }
 
 impl Display for Instruction {
@@ -173,15 +186,7 @@ impl Display for Instruction {
                     "mov {}, [{}{}]",
                     dst.as_ref().to_lowercase(),
                     formula,
-                    if let Some(displacement) = displacement {
-                        if *displacement > 0 {
-                            format!(" + {displacement}")
-                        } else {
-                            "".to_string()
-                        }
-                    } else {
-                        "".to_string()
-                    }
+                    displacement_str(displacement),
                 )
             }
             Instruction::MovRegToMem {
@@ -193,15 +198,7 @@ impl Display for Instruction {
                     f,
                     "mov [{}{}], {}",
                     formula,
-                    if let Some(displacement) = displacement {
-                        if *displacement > 0 {
-                            format!(" + {displacement}")
-                        } else {
-                            "".to_string()
-                        }
-                    } else {
-                        "".to_string()
-                    },
+                    displacement_str(displacement),
                     src.as_ref().to_lowercase(),
                 )
             }
@@ -221,15 +218,7 @@ impl Display for Instruction {
                     f,
                     "mov [{}{}], {}",
                     formula,
-                    if let Some(displacement) = displacement {
-                        if *displacement > 0 {
-                            format!(" + {displacement}")
-                        } else {
-                            "".to_string()
-                        }
-                    } else {
-                        "".to_string()
-                    },
+                    displacement_str(displacement),
                     if *data > 255 {
                         format!("word {data}")
                     } else {
@@ -365,7 +354,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             panic!("Invalid formula: {mem:b}");
                         };
 
-                        let displacement = input.next_byte() as u16;
+                        let displacement = input.next_byte() as i8 as i16;
 
                         if d > 0 {
                             Instruction::MovMemToReg {
@@ -392,7 +381,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             let instruction_byte_2 = input.next_byte();
                             let instruction_byte_3 = input.next_byte();
                             ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                        };
+                        } as i16;
 
                         if d > 0 {
                             Instruction::MovMemToReg {
@@ -480,7 +469,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             panic!("Invalid formula: {mem:b}");
                         };
 
-                        let displacement = input.next_byte() as u16;
+                        let displacement = input.next_byte() as i8 as i16;
 
                         let data = get_data(&mut input);
 
@@ -501,7 +490,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
                             let instruction_byte_2 = input.next_byte();
                             let instruction_byte_3 = input.next_byte();
                             ((instruction_byte_3 as u16) << 8) | (instruction_byte_2 as u16)
-                        };
+                        } as i16;
 
                         let data = get_data(&mut input);
 
