@@ -1,5 +1,9 @@
 use clap::Parser;
-use std::{fmt::Display, fs};
+use std::{
+    fmt::Display,
+    fs::{self, File},
+    io::Write,
+};
 use strum_macros::{AsRefStr, FromRepr};
 
 #[derive(Parser)]
@@ -7,6 +11,10 @@ use strum_macros::{AsRefStr, FromRepr};
 struct Args {
     /// File to disassemble
     file: String,
+
+    /// Output file
+    #[arg(long, short)]
+    output: Option<String>,
 }
 
 // Register from encoding W | REG
@@ -112,6 +120,13 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
     res
 }
 
+fn output(w: &mut dyn Write, instructions: &[Instruction]) {
+    writeln!(w, "bits 16").unwrap();
+    for instruction in instructions {
+        writeln!(w, "{instruction}").unwrap();
+    }
+}
+
 fn main() {
     let cli = Args::parse();
 
@@ -121,7 +136,10 @@ fn main() {
 
     let instructions = decode(&input);
 
-    for instruction in &instructions {
-        println!("{instruction}")
-    }
+    if let Some(file) = cli.output {
+        let mut file = File::create(file).unwrap();
+        output(&mut file, &instructions);
+    } else {
+        output(&mut std::io::stdout(), &instructions);
+    };
 }

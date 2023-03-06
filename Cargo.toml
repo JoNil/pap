@@ -1,0 +1,13 @@
+[workspace]
+
+members = [
+    "haversine",
+    "pap86",
+    "pap86_runner",
+]
+
+default-members = ["pap86_runner"]
+
+[profile.release]
+codegen-units = 1
+lto = true
