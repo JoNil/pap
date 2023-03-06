@@ -200,67 +200,41 @@ impl<'a> Input<'a> {
     }
 }
 
-fn parse_mem(input: &mut Input, w: u8, instruction_byte_2: u8) -> Operand {
+fn parse_mem(input: &mut Input, w: u8, instruction_byte_2: u8) -> Result<Operand, String> {
     let mode = instruction_byte_2 >> 6;
+    let mem = instruction_byte_2 & 0b111;
 
-    match mode {
+    Ok(match mode {
         0b00 => {
-            let mem = instruction_byte_2 & 0b111;
-
             if mem == 0b110 {
                 Operand::MemDirect(input.next_word())
             } else {
-                let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                    panic!("Invalid formula: {mem:b}");
-                };
-
                 Operand::Mem {
-                    formula,
+                    formula: EffectiveAddressFormula::from_repr(mem)
+                        .ok_or_else(|| format!("Invalid formula: {mem:b}"))?,
                     displacement: None,
                 }
             }
         }
-        0b01 => {
-            let mem = instruction_byte_2 & 0b111;
-
-            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                panic!("Invalid formula: {mem:b}");
-            };
-
-            let displacement = input.next_byte() as i8 as i16;
-
-            Operand::Mem {
-                formula,
-                displacement: Some(displacement),
-            }
-        }
-        0b10 => {
-            let mem = instruction_byte_2 & 0b111;
-
-            let Some(formula) = EffectiveAddressFormula::from_repr(mem) else {
-                panic!("Invalid formula: {mem:b}");
-            };
-
-            let displacement = input.next_word() as i16;
-
-            Operand::Mem {
-                formula,
-                displacement: Some(displacement),
-            }
-        }
+        0b01 => Operand::Mem {
+            formula: EffectiveAddressFormula::from_repr(mem)
+                .ok_or_else(|| format!("Invalid formula: {mem:b}"))?,
+            displacement: Some(input.next_byte() as i8 as i16),
+        },
+        0b10 => Operand::Mem {
+            formula: EffectiveAddressFormula::from_repr(mem)
+                .ok_or_else(|| format!("Invalid formula: {mem:b}"))?,
+            displacement: Some(input.next_word() as i16),
+        },
         0b11 => {
-            let w_reg_2 = (w << 3) | (instruction_byte_2 & 0b111);
+            let w_reg_2 = (w << 3) | mem;
 
-            let Some(reg_2) = Register::from_repr(w_reg_2).map(Operand::Register) else {
-                panic!("Invalid reg: {w_reg_2:b}")
-            };
-
-            reg_2
+            Register::from_repr(w_reg_2)
+                .map(Operand::Register)
+                .ok_or_else(|| format!("Invalid reg: {w_reg_2:b}"))?
         }
-        _ => {
-            panic!("Invalid mode!");
-        }
-    }
+        _ => Err("Invalid mode".to_string())?,
+    })
 }
 
 fn decode(input: &[u8]) -> Vec<Instruction> {
@@ -281,11 +255,12 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
 
                 let w_reg_1 = (w << 3) | ((instruction_byte_2 >> 3) & 0b111);
 
-                let Some(reg_1) = Register::from_repr(w_reg_1).map(Operand::Register) else {
-                    panic!("Invalid reg: {w_reg_1:b}")
-                };
+                let reg_1 = Register::from_repr(w_reg_1)
+                    .map(Operand::Register)
+                    .ok_or_else(|| format!("Invalid reg: {w_reg_1:b}"))
+                    .unwrap();
 
-                let mem = parse_mem(&mut input, w, instruction_byte_2);
+                let mem = parse_mem(&mut input, w, instruction_byte_2).unwrap();
 
                 if d > 0 {
                     Instruction::Mov {
@@ -304,7 +279,7 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
 
                 let instruction_byte_2 = input.next_byte();
 
-                let mem = parse_mem(&mut input, w, instruction_byte_2);
+                let mem = parse_mem(&mut input, w, instruction_byte_2).unwrap();
 
                 let data = Operand::Immediate(
                     if w > 0 {
@@ -323,9 +298,10 @@ fn decode(input: &[u8]) -> Vec<Instruction> {
             Opcode::MovImmediateToReg => {
                 let w_reg = instruction_byte_1 & 0b1111;
 
-                let Some(dst) = Register::from_repr(w_reg).map(Operand::Register) else {
-                    panic!("Invalid reg: {w_reg:b}")
-                };
+                let dst = Register::from_repr(w_reg)
+                    .map(Operand::Register)
+                    .ok_or_else(|| format!("Invalid reg: {w_reg:b}"))
+                    .unwrap();
 
                 let data = Operand::Immediate(
                     if w_reg & 0b1000 > 0 {
